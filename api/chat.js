@@ -1,4 +1,22 @@
 export default async function handler(req, res) {
+  const allowedOrigins = [
+    "http://127.0.0.1:5500",
+    "http://localhost:5500"
+  ];
+
+  const origin = req.headers.origin;
+
+  if (allowedOrigins.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  }
+
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
+
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Método não permitido" });
   }
@@ -267,7 +285,7 @@ COMO RESPONDER
 - Quando útil, use listas curtas e passo a passo.
 - Se alguém perguntar algo fora do sistema, diga algo como: “Posso te ajudar apenas com o uso do Smart Farma.”
 - Se perguntarem sobre ação operacional, explique o caminho dentro do sistema, sem afirmar que você realizou nada.
-- Se perguntarem sobre uma função que não está no contexto, diga com clareza que você não consigo confirmar essa função no Smart Farma com base no contexto disponível.
+- Se perguntarem sobre uma função que não está no contexto, diga com clareza que não consegue confirmar essa função no Smart Farma com base no contexto disponível.
 `;
 
     const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
@@ -279,14 +297,8 @@ COMO RESPONDER
       body: JSON.stringify({
         model: "llama-3.1-8b-instant",
         messages: [
-          {
-            role: "system",
-            content: systemPrompt
-          },
-          {
-            role: "user",
-            content: message.trim()
-          }
+          { role: "system", content: systemPrompt },
+          { role: "user", content: message.trim() }
         ],
         temperature: 0.2,
         max_tokens: 700
@@ -296,13 +308,13 @@ COMO RESPONDER
     if (!response.ok) {
       const errorText = await response.text();
       console.error("[Smart Farma Chatbot] Erro Groq:", errorText);
-      return res.status(502).json({
-        error: "Erro ao consultar IA."
-      });
+      return res.status(502).json({ error: "Erro ao consultar IA." });
     }
 
     const data = await response.json();
-    const reply = data?.choices?.[0]?.message?.content?.trim() || "No momento não consegui gerar uma resposta sobre o Smart Farma.";
+    const reply =
+      data?.choices?.[0]?.message?.content?.trim() ||
+      "No momento não consegui gerar uma resposta sobre o Smart Farma.";
 
     return res.status(200).json({ reply });
   } catch (e) {
