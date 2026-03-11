@@ -1,12 +1,8 @@
 export default async function handler(req, res) {
-  // CONFIGURAÇÃO DE CORS
   res.setHeader("Access-Control-Allow-Credentials", true);
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS,PATCH,DELETE,POST,PUT");
-  res.setHeader(
-    "Access-Control-Allow-Headers",
-    "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization"
-  );
+  res.setHeader("Access-Control-Allow-Headers", "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization");
 
   if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method !== "POST") return res.status(405).json({ error: "Método não permitido" });
@@ -18,51 +14,49 @@ export default async function handler(req, res) {
     }
 
     // =====================================================================
-    // 1. FILTRO DE MEMÓRIA LOCAL (Respostas rápidas sem gastar IA)
+    // 1. FILTRO DE MEMÓRIA LOCAL (Mantido para economizar IA em saudações)
     // =====================================================================
-    
-    // Limpa a mensagem: tira acentos, pontuações e deixa minúsculo para comparar fácil
-    const msgLimpa = message.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\w\s]/gi, '');
+    const msgOriginal = message.trim().toLowerCase();
+    const msgLimpa = msgOriginal.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\w\s]/gi, '').trim();
 
-    // Verifica saudações
-    if (msgLimpa === "oi" || msgLimpa === "ola" || msgLimpa === "bom dia" || msgLimpa === "boa tarde" || msgLimpa === "boa noite") {
-      return res.status(200).json({ reply: "Olá! 👋 Sou o Assistente Smart Farma. Como posso te ajudar com o sistema hoje?" });
+    if (msgLimpa.length < 25) {
+      if (msgLimpa.includes("oi") || msgLimpa.includes("ola") || msgLimpa.includes("bom dia") || msgLimpa.includes("boa tarde") || msgLimpa.includes("boa noite") || msgLimpa.includes("tudo bem")) {
+        return res.status(200).json({ reply: "Olá! 👋 Sou o Assistente Smart Farma. Como posso te ajudar com as funções do sistema hoje?" });
+      }
+      if (msgLimpa.includes("obrigado") || msgLimpa.includes("obrigada") || msgLimpa === "valeu" || msgLimpa === "vlw" || msgLimpa === "top" || msgLimpa === "ok" || msgLimpa.includes("entendi") || msgLimpa === "show") {
+        return res.status(200).json({ reply: "Por nada! Qualquer outra dúvida sobre o sistema, é só chamar. 😉" });
+      }
     }
-    
-    // Verifica identidade
-    if (msgLimpa === "quem e voce" || msgLimpa === "quem e vc" || msgLimpa.includes("pra que vc serve") || msgLimpa.includes("o que vc faz") || msgLimpa.includes("pra que voce serve")) {
-      return res.status(200).json({ reply: "Eu sou o Assistente Smart Farma, o assistente interno do sistema. Minha função é orientar você sobre como usar nossas ferramentas de caixa, boletos, sangrias, etc." });
+    if (msgLimpa.includes("quem e voce") || msgLimpa.includes("quem e vc") || msgLimpa.includes("pra que vc serve") || msgLimpa.includes("o que vc faz")) {
+      return res.status(200).json({ reply: "Eu sou o Assistente Smart Farma, uma inteligência interna do sistema. Estou aqui para te ajudar a entender como lançar boletos, enviar sangrias, montar folhas de caixa e usar as ferramentas." });
     }
-
-    // Verifica criador
-    if (msgLimpa.includes("quem te criou") || msgLimpa.includes("quem fez voce") || msgLimpa.includes("quem e seu criador") || msgLimpa.includes("quem desenvolveu")) {
-      return res.status(200).json({ reply: "Eu fui criado pelo Diego, o desenvolvedor do sistema Smart Farma, para ajudar vocês no dia a dia com o sistema!" });
-    }
-
-    // Verifica agradecimentos
-    if (msgLimpa === "obrigado" || msgLimpa === "obrigada" || msgLimpa === "valeu" || msgLimpa === "vlw" || msgLimpa === "top" || msgLimpa === "ok") {
-      return res.status(200).json({ reply: "Por nada! Se precisar de mais alguma ajuda com o sistema, estou por aqui. 😉" });
+    if (msgLimpa.includes("quem te criou") || msgLimpa.includes("quem fez voce") || msgLimpa.includes("quem desenvolveu")) {
+      return res.status(200).json({ reply: "Eu fui criado pelo Diego, desenvolvedor do Smart Farma, para ajudar no dia a dia com o sistema!" });
     }
 
     // =====================================================================
-    // 2. SE NÃO FOI BÁSICO, CHAMA A IA PARA PROCESSAR (GROQ)
+    // 2. PROMPT OTIMIZADO (Rico em detalhes, mas compacto)
     // =====================================================================
+    const systemPrompt = `Você é o Assistente Smart Farma, suporte interno criado por Diego.
+REGRA: Explique como usar o sistema. NUNCA diga que você executou ações (você não tem acesso a botões ou banco de dados, apenas orienta). Responda em PT-BR, curto e direto. Recuse assuntos fora do sistema.
 
-    const systemPrompt = `Você é o Assistente Smart Farma, criado por Diego.
-Regra de Ouro: Apenas oriente sobre o uso do Smart Farma. Nunca diga que executou ações (você não altera dados). Responda de forma curta, direta e em PT-BR. Se o assunto não for o sistema, recuse educadamente.
-
-CONCEITOS DO SISTEMA:
-1. ACESSOS: Vendedor (Loja) e Admin (Escritório). Login é numérico. Novos acessos passam por aprovação do Admin. Existe recuperação local de senha via validação do Admin.
-2. SANGRIA: Dinheiro do caixa enviado ao escritório. Status: pendente (aguarda), aprovada (aceita), recusada (devolvida com motivo), modificada (valor ajustado).
-3. DESPESA: Dinheiro retirado do caixa da loja para gastos. Diminui o saldo.
-4. BOLETOS (Vendedor): Abas "Conferir Novos" e "A Pagar/Pagos". Pode confirmar recebimento ou relatar erro (devolve ao admin). 
-5. STATUS DE BOLETOS: pendente (novo/aguardando), confirmado (loja ciente), analise_pagamento (loja pagou, aguarda admin baixar), pago (baixado), recusado (erro). O vendedor pode informar o pagamento exato ou com diferença (juros/desconto).
-6. FOLHA DE CONFERÊNCIA (Caixa Loja): Cálculo = saldoAnterior + totalSangrias - totalBoletos + pixRecebido - despesaValor. Esta folha atualiza o saldo físico (saldoDinheiro) da loja. Boletos pendentes selecionados na folha exigem informar valor pago (vão para analise_pagamento). Se a loja não tem saldo inicial, um modal pede o valor físico total no momento.
-7. ADMIN (Escritório): 
-- Caixa do Escritório: Independente das lojas. Pode adicionar/retirar fundos.
-- Lançar Boletos: Lança em fila/lote -> Revisa (pode editar/excluir) -> Envia às lojas (status pendente).
-- Conferência de Caixas: Audita folhas das lojas (marca itens certo/errado). Atualiza status: certo=aprovado/pago, errado=recusado/analise_pagamento.
-- Dashboard: Vê grids de lojas (físico, em trânsito, boletos pendentes) e tem feed de movimentações.`;
+MANUAL DO SISTEMA SMART FARMA:
+1. GERAL: Acesso Vendedor (Loja) e Admin (Escritório). Login numérico. Novos acessos precisam de aprovação. Recuperação de senha local exige validação do Admin via TeamViewer/AnyDesk.
+2. SANGRIA (Entrada no caixa): Retirada de dinheiro enviada ao escritório. Status: pendente (aguarda), aprovada (aceita), recusada (com motivo), modificada (valor ajustado).
+3. DESPESA (Saída do caixa): Dinheiro retirado do caixa da loja para gastos.
+4. BOLETOS (Vendedor): 
+   - 'Conferir Novos': Confirma dados ou relata erro (Valor incorreto, Número errado, Boleto de outra loja).
+   - 'A Pagar': Informa pagamento. Pode ter diferença (juros/desconto).
+   - Status Boletos: pendente (novo), confirmado (loja ciente), analise_pagamento (loja pagou, aguarda admin validar), pago (baixado), recusado (erro relatado).
+5. FOLHA DE CONFERÊNCIA (Caixa Loja):
+   - Cálculo: Saldo Final = Saldo Anterior + Total Sangrias - Boletos Abatidos + PIX Recebido - Despesa da Loja.
+   - Atualiza o Saldo Físico (Dinheiro) da loja. Se a loja não tem saldo inicial, um modal pede o saldo atual no 1º acesso.
+   - Boletos pendentes incluídos na folha abrem modal para informar valor pago (vão para analise_pagamento).
+6. ADMIN (Escritório):
+   - Caixa Escritório: Saldo independente das lojas. Admin adiciona/retira fundos (exige motivo).
+   - Lançar Boleto: Pode usar BIPADOR. Adiciona à fila -> Revisa -> Envia lote (ficam pendentes nas lojas).
+   - Conferência de Caixas: Audita folhas. Marca itens como Certo (vira Aprovado/Pago) ou Errado (vira Recusado/Analise).
+   - Equipe/Lojas: Visualiza grids com saldos, pendências e cria acessos.`;
 
     const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
@@ -76,7 +70,7 @@ CONCEITOS DO SISTEMA:
           { role: "system", content: systemPrompt },
           { role: "user", content: message.trim() }
         ],
-        temperature: 0.2,
+        temperature: 0.2, // Temperatura baixa para ela ser precisa e não inventar coisas
         max_tokens: 600
       })
     });
@@ -84,11 +78,11 @@ CONCEITOS DO SISTEMA:
     if (!response.ok) {
       const errorText = await response.text();
       console.error("[Smart Farma Chatbot] Erro Groq:", errorText);
-      return res.status(502).json({ error: "Erro de Rate Limit ou IA indisponível no momento." });
+      return res.status(502).json({ error: "Erro de limite de uso da IA no momento. Tente novamente em 1 minuto." });
     }
 
     const data = await response.json();
-    const reply = data?.choices?.[0]?.message?.content?.trim() || "Sem resposta.";
+    const reply = data?.choices?.[0]?.message?.content?.trim() || "Desculpe, não consegui formular uma resposta agora.";
 
     return res.status(200).json({ reply });
   } catch (e) {
