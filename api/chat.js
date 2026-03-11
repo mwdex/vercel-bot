@@ -1,24 +1,19 @@
-
-
 export default async function handler(req, res) {
-  const allowedOrigins = [
-    "http://127.0.0.1:5500",
-    "http://localhost:5500"
-  ];
+  // 1. CONFIGURAÇÃO DE CORS CORRIGIDA (Permite o Netlify e qualquer outro domínio)
+  res.setHeader("Access-Control-Allow-Credentials", true);
+  res.setHeader("Access-Control-Allow-Origin", "*"); // O asterisco permite qualquer origem, resolvendo o bloqueio do Netlify
+  res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS,PATCH,DELETE,POST,PUT");
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization"
+  );
 
-  const origin = req.headers.origin;
-
-  if (allowedOrigins.includes(origin)) {
-    res.setHeader("Access-Control-Allow-Origin", origin);
-  }
-
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-
+  // 2. RESPOSTA RÁPIDA PARA O PREFLIGHT (Requisito dos navegadores)
   if (req.method === "OPTIONS") {
     return res.status(200).end();
   }
 
+  // 3. BLOQUEIO DE MÉTODOS INVÁLIDOS
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Método não permitido" });
   }
