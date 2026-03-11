@@ -17,7 +17,37 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Mensagem vazia" });
     }
 
-    // PROMPT COMPRIMIDO E OTIMIZADO PARA NÃO ESTOURAR O LIMITE DE TOKENS (TPM)
+    // =====================================================================
+    // 1. FILTRO DE MEMÓRIA LOCAL (Respostas rápidas sem gastar IA)
+    // =====================================================================
+    
+    // Limpa a mensagem: tira acentos, pontuações e deixa minúsculo para comparar fácil
+    const msgLimpa = message.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\w\s]/gi, '');
+
+    // Verifica saudações
+    if (msgLimpa === "oi" || msgLimpa === "ola" || msgLimpa === "bom dia" || msgLimpa === "boa tarde" || msgLimpa === "boa noite") {
+      return res.status(200).json({ reply: "Olá! 👋 Sou o Assistente Smart Farma. Como posso te ajudar com o sistema hoje?" });
+    }
+    
+    // Verifica identidade
+    if (msgLimpa === "quem e voce" || msgLimpa === "quem e vc" || msgLimpa.includes("pra que vc serve") || msgLimpa.includes("o que vc faz") || msgLimpa.includes("pra que voce serve")) {
+      return res.status(200).json({ reply: "Eu sou o Assistente Smart Farma, o assistente interno do sistema. Minha função é orientar você sobre como usar nossas ferramentas de caixa, boletos, sangrias, etc." });
+    }
+
+    // Verifica criador
+    if (msgLimpa.includes("quem te criou") || msgLimpa.includes("quem fez voce") || msgLimpa.includes("quem e seu criador") || msgLimpa.includes("quem desenvolveu")) {
+      return res.status(200).json({ reply: "Eu fui criado pelo Diego, o desenvolvedor do sistema Smart Farma, para ajudar vocês no dia a dia com o sistema!" });
+    }
+
+    // Verifica agradecimentos
+    if (msgLimpa === "obrigado" || msgLimpa === "obrigada" || msgLimpa === "valeu" || msgLimpa === "vlw" || msgLimpa === "top" || msgLimpa === "ok") {
+      return res.status(200).json({ reply: "Por nada! Se precisar de mais alguma ajuda com o sistema, estou por aqui. 😉" });
+    }
+
+    // =====================================================================
+    // 2. SE NÃO FOI BÁSICO, CHAMA A IA PARA PROCESSAR (GROQ)
+    // =====================================================================
+
     const systemPrompt = `Você é o Assistente Smart Farma, criado por Diego.
 Regra de Ouro: Apenas oriente sobre o uso do Smart Farma. Nunca diga que executou ações (você não altera dados). Responda de forma curta, direta e em PT-BR. Se o assunto não for o sistema, recuse educadamente.
 
@@ -54,7 +84,7 @@ CONCEITOS DO SISTEMA:
     if (!response.ok) {
       const errorText = await response.text();
       console.error("[Smart Farma Chatbot] Erro Groq:", errorText);
-      return res.status(502).json({ error: "Erro de Rate Limit ou IA indisponível." });
+      return res.status(502).json({ error: "Erro de Rate Limit ou IA indisponível no momento." });
     }
 
     const data = await response.json();
