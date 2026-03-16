@@ -37,7 +37,7 @@ export default async function handler(req, res) {
 
     const userMessage = message.trim();
     if (userMessage.length > 300) {
-      return res.status(400).json({ reply: "Sua mensagem é muito longa. Por favor, seja mais direto para eu poder te ajudar com precisão." });
+      return res.status(400).json({ reply: "Sua mensagem é muito longa. Por favor, seja mais direto para eu poder te ajudar com precisão sobre o sistema da farmácia." });
     }
 
     // 2. NORMALIZAÇÃO DE TEXTO
@@ -55,98 +55,85 @@ export default async function handler(req, res) {
     }
 
     // =========================================================================
-    // 4. GUARDRAILS ANTI-ALUCINAÇÃO (INTERCEPTADORES DE IDENTIDADE E INFRA)
+    // 4. GUARDRAILS ANTI-ALUCINAÇÃO E INTERCEPTADORES DE ESCOPO
     // =========================================================================
     
-    // A. Interceptador de Atualização / Versão
-    if (/\b(atualiza[çc][ãa]o|vers[ãa]o|knowledge cutoff|data limite|ate que data)\b/i.test(msgLimpa)) {
-        return responder(res, sessionId, session, "Não possuo uma data pública de atualização. Fui configurado apenas para ajudar com o uso do sistema Smart Farma.", ["Ver opções do sistema"]);
+    // A. Identidade do Sistema ("O que é Smart Farma?")
+    if (/\b(o que [eé]( o)? smart farma|para que serve( o sistema)?|o que o sistema faz|o que vc faz)\b/i.test(msgLimpa)) {
+        return responder(res, sessionId, session, "Smart Farma é o nome da farmácia onde este sistema é utilizado.\n\nO sistema Smart Farma é uma ferramenta interna usada pelas lojas para registrar operações do caixa (sangrias, despesas, boletos) e acompanhar o saldo físico. Essas operações são enviadas para análise do escritório.", ["Como lançar Sangria", "Como lançar Despesa", "Fluxo de Boletos"]);
     }
 
-    // B. Interceptador de Criação / Autoria
-    if (/\b(quem te criou|quem te fez|quem desenvolveu|quem [ée] seu dono|qual empresa.*criou|quem programou)\b/i.test(msgLimpa)) {
-        return responder(res, sessionId, session, "Sou o assistente virtual do sistema Smart Farma e fui configurado para orientar sobre o uso do sistema. Não tenho informações para compartilhar sobre autoria ou estrutura interna.", ["Ver opções do sistema"]);
+    // B. Interceptador de Infraestrutura, Histórico e Criação (Bloqueio Total)
+    if (/\b(atualiza[çc][ãa]o|vers[ãa]o|quem te criou|quem fez|quem desenvolveu|qual empresa.*criou|onde.*hospedado|em que servidor|onde (voce|vc) roda|knowledge cutoff|data limite|hist[óo]rico|dono|criador|programador)\b/i.test(msgLimpa)) {
+        return responder(res, sessionId, session, "Não possuo uma data pública de atualização, nem informações técnicas de infraestrutura, desenvolvimento ou histórico da empresa. Fui configurado apenas para ajudar com o uso do sistema interno da farmácia Smart Farma.", ["Ver funções do sistema"]);
     }
 
-    // C. Interceptador de Hospedagem / Servidor / Infraestrutura
-    if (/\b(onde.*hospedado|em que servidor|qual servidor|onde (voce|vc) roda|onde (voce|vc) mora|onde (voce|vc) (esta|fica)|infraestrutura)\b/i.test(msgLimpa) && !msgLimpa.includes("tela") && !msgLimpa.includes("menu")) {
-        return responder(res, sessionId, session, "Não forneço detalhes de infraestrutura. Posso ajudar apenas com o uso das funções do sistema Smart Farma.", ["Ver opções do sistema"]);
+    // C. Interceptador de Alucinações Corporativas (Veterinária, Agricultura, Outros Setores)
+    if (/\b(veterin[áa]ria|agr[íi]cola|agricultura|agro|produto comercial|vender sistema)\b/i.test(msgLimpa)) {
+        return responder(res, sessionId, session, "Isso está incorreto. Este sistema é de uso exclusivamente interno da farmácia Smart Farma e focado na gestão do caixa da loja.", ["Entendi"]);
     }
 
-    // D. Interceptador de Termos Genéricos de IA
-    if (/\b(chatgpt|gpt|gemini|llm|ia|inteligencia artificial|modelo|openai|groq|llama)\b/i.test(msgLimpa)) {
-        return responder(res, sessionId, session, "Sou um assistente interno exclusivo do Smart Farma. Minha função é apenas orientar sobre as regras e telas do sistema da farmácia.", ["Entendi"]);
-    }
-
-    // E. Interceptador Fora de Escopo Geral
-    // Adicionado termos médicos/vendas para focar o bot estritamente no financeiro/caixa da farmácia
-    if (/\b(receita federal|politica|esporte|futebol|clima|receita de bolo|piada|codigo|python|html|javascript|farmacia popular|vender|cliente|imposto|remedio|medicamento|bula)\b/.test(msgLimpa)) {
-      return responder(res, sessionId, session, "Posso ajudar apenas com dúvidas sobre o uso do sistema Smart Farma, como sangria, despesas, boletos e saldo do caixa.", ["Fazer Sangria", "Pagar Boleto"]);
+    // D. Interceptador Fora de Escopo (Estoque, Vendas, Contabilidade, ERP Genérico)
+    if (/\b(estoque|venda|nota fiscal|nf|contabilidade|erp|cliente|receita federal|produto|medicamento|bula|receita m[ée]dica|imposto|fornecedor externo)\b/i.test(msgLimpa)) {
+      return responder(res, sessionId, session, "Não lido com estoque, vendas, emissão de notas fiscais ou contabilidade geral. O sistema interno foca apenas no controle financeiro do caixa da loja. Posso ajudar apenas com sangrias, despesas, boletos e saldo do caixa.", ["Fazer Sangria", "Pagar Boleto"]);
     }
 
     // =========================================================================
-    // 5. INTERPRETAÇÃO DE CONTEXTO E FLUXOS
+    // 5. INTERPRETAÇÃO DE CONTEXTO ("Onde fica?")
     // =========================================================================
 
-    // Onde fica a tela? (Depende do contexto)
     if (/\b(onde fica|onde [ée]|como [eu ]*acho|onde acho|aonde vou|onde clico|qual tela)\b/i.test(msgLimpa)) {
         if (session.lastTopic === 'sangria' || session.lastTopic === 'despesa' || msgLimpa.includes("operacao") || msgLimpa.includes("sangria") || msgLimpa.includes("despesa")) {
-            return responder(res, sessionId, session, "A opção 'Registrar Operação' fica localizada no menu principal da área da loja. Lá você escolhe o tipo (Sangria ou Despesa).", ["Entendi"]);
+            return responder(res, sessionId, session, "A opção 'Registrar Operação' fica localizada no menu principal da área da loja. Lá você escolhe o tipo (Sangria ou Retirada de Despesa).", ["Entendi"]);
         } else if (session.lastTopic === 'boleto' || msgLimpa.includes("boleto")) {
-            return responder(res, sessionId, session, "A 'Central de Boletos' fica no menu principal do sistema. Lá você tem abas separadas para Novos Boletos e Boletos em Análise.", ["Entendi"]);
+            return responder(res, sessionId, session, "A 'Central de Boletos' fica no menu principal do sistema. Lá você encontrará as abas 'Novos' e 'Em Análise'.", ["Entendi"]);
         } else {
-            return responder(res, sessionId, session, "Depende do que você quer fazer. A 'Central de Boletos' e o 'Registrar Operação' ficam no menu principal da loja. O que você está tentando lançar?", ["Fazer Sangria", "Pagar Boleto"]);
+            return responder(res, sessionId, session, "Depende da rotina que você deseja realizar. As opções 'Central de Boletos' e 'Registrar Operação' ficam no menu principal do sistema da loja. O que você quer fazer?", ["Fazer Sangria", "Pagar Boleto"]);
         }
     }
 
     const isContinuation = /\b(e agr|agr|e agora|depois|pr[oó]ximo( passo)?|pronto|j[aá] fiz|coloquei( o valor)?|adicionei|enviei|e a[ií]|fiz( isso)?|sim|ok|achei|encontrei|continue|certo|entendi|beleza)\b/i.test(msgLimpa) && msgLimpa.split(' ').length <= 6;
     const isErrorQuery = /\b(errar|errei|erro|corrigir|se der erro|consertar|fiz errado|esqueci)\b/.test(msgLimpa);
 
-    // 6. BANCO DE CONHECIMENTO RIGOROSO (FAQs Locais)
+    // =========================================================================
+    // 6. BANCO DE CONHECIMENTO RIGOROSO (FAQs Locais do Sistema)
+    // =========================================================================
     const faqs = [
-      { // Entrando no fluxo Sangria
+      { // Sangria Inicial
         match: /\b(como fazer|passo a passo|lancar|enviar|registrar|como faco|cadastrar)\b.*\bsangria\b/,
         action: () => { session.intent = "sangria"; session.step = 1; session.lastTopic = "sangria"; return { reply: "Para registrar uma sangria:\n\n1. Acesse o menu 'Registrar Operação'.\n2. Escolha o tipo 'Sangria'.\n\nVocê conseguiu encontrar essa tela?", chips: ["Sim, encontrei", "Onde fica?"] }; }
       },
-      { // Entrando no fluxo Despesa
+      { // Despesa Inicial
         match: /\b(como fazer|passo a passo|lancar|enviar|registrar|como faco|cadastrar)\b.*\bdespesa\b/,
         action: () => { session.intent = "despesa"; session.step = 1; session.lastTopic = "despesa"; return { reply: "Para registrar uma despesa:\n\n1. Acesse o menu 'Registrar Operação'.\n2. Escolha 'Retirada de Despesa'.\n\nConseguiu achar?", chips: ["Sim, achei", "Onde fica?"] }; }
       },
-      { // Entrando no fluxo Boleto
+      { // Boleto Inicial e Regra de 3 Etapas
         match: /\b(como pagar|passo a passo|baixar|como faco com|como funciona)\b.*\bboleto\b/,
-        action: () => { session.intent = "boleto"; session.step = 1; session.lastTopic = "boleto"; return { reply: "O processo de boletos tem 3 etapas. O primeiro passo é a **Conferência**. Ao receber um boleto, vá na 'Central de Boletos', aba 'Novos', e confirme que ele chegou à loja. Você já fez essa conferência inicial?", chips: ["Já conferi", "Como conferir?"] }; }
+        action: () => { session.intent = "boleto"; session.step = 1; session.lastTopic = "boleto"; return { reply: "O processo de boletos no sistema possui 3 etapas obrigatórias:\n\n**1. Conferência:** Ao receber um boleto na 'Central de Boletos' (aba Novos), você confirma que ele chegou à loja.\n**2. Registro de Pagamento:** Você informa o valor que retirou do caixa para pagar.\n**3. Confirmação do Escritório:** O escritório aprova a baixa.\n\nVocê já fez a etapa 1 (Conferência)?", chips: ["Já conferi", "Como conferir?"] }; }
       },
-      { // Dúvidas Críticas de Boletos
-        match: /\b(se eu aceitar.*pago|aceitei.*ja descontou|boleto pendente significa pago|boleto pendente ja.*saldo)\b/,
-        action: () => { session.lastTopic = "boleto"; return { reply: "Não! Aceitar um boleto pendente apenas confirma que ele chegou na loja (Conferência). Ele **não** está pago e **não** descontou do seu saldo ainda.\n\nPara pagar, você precisa 'Informar Pagamento Efetuado' e aguardar o escritório aprovar a baixa.", chips: ["Onde informo o pagamento?", "Entendi"] }; }
+      { // Dúvidas Críticas de Boletos (Aceitar vs Pagar)
+        match: /\b(se eu aceitar.*pago|aceitei.*ja descontou|boleto pendente significa pago|boleto pendente ja.*saldo|conferir.*paga|o que e.*pendente)\b/,
+        action: () => { session.lastTopic = "boleto"; return { reply: "Atenção: Conferir ou aceitar um boleto 'Pendente' apenas avisa o sistema que o documento chegou na loja. Ele **não** está pago e **não** descontou do seu saldo Físico.\n\nPara prosseguir com o pagamento, você precisa clicar em 'Informar Pagamento Efetuado'.", chips: ["Onde informo o pagamento?", "Entendi"] }; }
       },
       { // Onde informar pagamento do boleto
         match: /\b(onde informo o pagamento|como informar.*boleto|como pagar.*boleto)\b/,
-        action: () => { session.lastTopic = "boleto"; return { reply: "Para informar que você pagou:\n\n1. Vá na 'Central de Boletos'.\n2. Clique em 'Informar Pagamento Efetuado' no boleto desejado.\n3. Digite o valor exato que você retirou do caixa.", chips: ["O que acontece depois?", "Entendi"] }; }
-      },
-      { // Dúvidas sobre o que fazer com boleto pendente
-        match: /\b(tenho boleto pendente.*faco|o que faco.*boleto pendente)\b/,
-        action: () => { session.lastTopic = "boleto"; return { reply: "Se você tem um boleto pendente ('Novos'), o primeiro passo é conferir se os dados estão corretos e clicar para aceitar/confirmar o recebimento. Depois disso, quando você for pagar com o dinheiro do caixa, você deve 'Informar Pagamento Efetuado'.", chips: ["Como informar pagamento?", "E se o boleto estiver errado?"] }; }
+        action: () => { session.lastTopic = "boleto"; return { reply: "Para registrar que você usou o dinheiro do caixa para pagar o boleto:\n\n1. Vá na 'Central de Boletos'.\n2. Clique no botão 'Informar Pagamento Efetuado' no boleto desejado.\n3. Digite o valor exato que foi pago.", chips: ["O que acontece depois?", "Entendi"] }; }
       },
       { // Sangria vs Despesa
         match: /\b(diferenca|qual a diferenca)\b.*\b(sangria|despesa)\b/,
-        action: () => { return { reply: "A diferença principal é a consequência no seu caixa da farmácia:\n\n• **Sangria**: É dinheiro enviado ao escritório. Quando o escritório aprova, esse valor **SOMA** no seu saldo Físico.\n• **Despesa**: É dinheiro gasto na loja. Quando aprovada, **SUBTRAI** do seu saldo Físico.", chips: ["Como lançar Sangria", "Como lançar Despesa"] }; }
+        action: () => { return { reply: "A diferença está na finalidade e no impacto no seu saldo:\n\n• **Sangria**: É dinheiro recolhido/enviado da loja ao escritório. Quando o escritório aprova, esse valor **SOMA** no seu 'Físico Confirmado'.\n• **Despesa**: É dinheiro gasto pela própria loja (ex: material de limpeza). Quando aprovada, **SUBTRAI** do seu saldo 'Físico Confirmado'.", chips: ["Como lançar Sangria", "Como lançar Despesa"] }; }
       },
       { // Definição de Em Análise
-        match: /\b(o que.*analise|significa.*analise|em analise)\b/,
-        action: () => { return { reply: "O status 'Em Análise' significa que a operação foi enviada, mas o escritório ainda precisa revisar e aprovar. **Atenção:** Operações em análise não alteram o seu saldo físico até serem aprovadas.", chips: ["Quando o saldo muda?", "Entendi"] }; }
+        match: /\b(o que.*analise|significa.*analise|em analise|analise de pagamento)\b/,
+        action: () => { return { reply: "O status 'Em Análise' significa que a sua operação (Sangria, Despesa ou o Registro de Pagamento de um Boleto) foi enviada para o sistema e está aguardando o escritório revisar e aprovar.\n\n**Atenção:** Nenhuma operação em análise altera o seu saldo físico da gaveta até que o escritório confirme a baixa.", chips: ["Quando o saldo muda?", "Entendi"] }; }
       },
-      { // Definição de Pendente
-        match: /\b(o que.*pendente|significa.*pendente)\b/,
-        action: () => { return { reply: "O status 'Pendente' geralmente aparece para Novos Boletos que o escritório enviou para a loja e que você ainda não conferiu ou aceitou.", chips: ["Fluxo de Boletos"] }; }
+      { // Regra de Saldo Físico
+        match: /\b(fisico confirmado|como funciona.*saldo|o que e.*saldo|quando o saldo muda|quando.*atualizado|o que acontece.*aprovada?|o que acontece.*confirmado)\b/,
+        action: () => { return { reply: "O saldo 'Físico (Confirmado)' representa o dinheiro exato que deve estar fisicamente na sua gaveta de caixa. Ele atualiza APENAS nas seguintes condições:\n\n• **Sangria Aprovada pelo escritório:** O saldo aumenta.\n• **Despesa Aprovada pelo escritório:** O saldo diminui.\n• **Boleto Confirmado pelo Escritório (Etapa 3):** O saldo diminui.", chips: ["Entendi", "Dúvida sobre Boletos"] }; }
       },
-      { // Consequências e Saldo Físico
-        match: /\b(fisico confirmado|como funciona.*saldo|o que e.*saldo|quando o saldo muda|quando.*atualizado|o que acontece quando.*aprovad[ao])\b/,
-        action: () => { return { reply: "O saldo 'Físico (Confirmado)' representa o dinheiro que deve estar na gaveta. Ele atualiza em tempo real exclusivamente quando o escritório toma uma ação:\n\n• **Aprova Sangria:** O saldo aumenta.\n• **Aprova Despesa:** O saldo diminui.\n• **Confirma Baixa de Boleto:** O saldo diminui.", chips: ["Entendi", "Dúvida sobre Boletos"] }; }
-      },
-      { // Saudações e Menu inicial
-        match: /\b(oi|ola|bom dia|boa tarde|boa noite|tudo bem|menu|inicio)\b/,
-        action: () => { session.intent = null; session.step = 0; session.lastTopic = null; return { reply: "Olá! Sou o Assistente Smart Farma. Estou aqui exclusivamente para orientar sobre o sistema da farmácia. Como posso ajudar hoje?", chips: ["Fazer Sangria", "Lançar Despesa", "Fluxo de Boletos", "Entender o Saldo"] }; }
+      { // Menu inicial
+        match: /\b(oi|ola|bom dia|boa tarde|boa noite|tudo bem|menu|inicio|ajuda)\b/,
+        action: () => { session.intent = null; session.step = 0; session.lastTopic = null; return { reply: "Olá! Sou o assistente exclusivo do sistema interno da farmácia Smart Farma. Estou aqui para te orientar sobre as rotinas de caixa da loja. O que você deseja fazer?", chips: ["Sangrias", "Despesas", "Boletos", "Saldo do Caixa"] }; }
       }
     ];
 
@@ -157,25 +144,27 @@ export default async function handler(req, res) {
       }
     }
 
-    // 7. PROGRESSÃO DE FLUXO ATIVO (State Machine)
+    // =========================================================================
+    // 7. PROGRESSÃO DOS FLUXOS DE OPERAÇÃO
+    // =========================================================================
     const flows = {
       sangria: {
-        2: { reply: "Ótimo! Na tela de Sangria, informe o valor exato que está enviando, escreva a observação (motivo) e, se precisar, ajuste a 'Data da operação'. Já preencheu tudo?", chips: ["Já preenchi", "Errei o valor, e agora?"] },
-        3: { reply: "Perfeito. Basta clicar em 'Enviar Registro'. A sangria ficará 'Em Análise', aguardando o escritório aprovar.\n\nFicou claro?", chips: ["Sim, entendi", "O que significa Em Análise?"] },
-        4: { reply: "Assim que o escritório aprovar, a sangria SOMA automaticamente no seu 'Físico (Confirmado)'.\n\nPosso ajudar com mais alguma coisa?", chips: ["Ver Menu Principal", "Encerrar"] },
-        erro: { reply: "Se você errar o valor na sangria, avise o escritório. Eles podem modificar o valor na hora de aprovar ou recusar a operação para você lançar de novo." }
+        2: { reply: "Ótimo! Na tela de Sangria, informe o valor exato, escreva a observação (motivo) e ajuste a 'Data da operação' se necessário. Você já preencheu os campos?", chips: ["Já preenchi", "Errei o valor, e agora?"] },
+        3: { reply: "Perfeito. Agora clique em 'Enviar Registro'. A sangria ficará com o status 'Em Análise', aguardando a aprovação do escritório.\n\nFicou claro?", chips: ["Sim, entendi", "O que significa Em Análise?"] },
+        4: { reply: "Lembre-se: Assim que o escritório aprovar, a sangria SOMARÁ automaticamente no seu saldo 'Físico (Confirmado)'. Ajudo com mais alguma coisa?", chips: ["Voltar ao início", "Encerrar"] },
+        erro: { reply: "Se você errar o valor na sangria, não se preocupe. Avise o escritório imediatamente; eles podem ajustar o valor durante a aprovação ou recusar a operação para que você possa enviá-la novamente do jeito certo." }
       },
       despesa: {
-        2: { reply: "Legal. Informe o valor gasto, escreva o detalhe da despesa na observação e ajuste a data se ocorreu em outro dia. Tudo certo até aqui?", chips: ["Tudo certo", "Errei, o que faço?"] },
-        3: { reply: "Agora é só clicar em 'Enviar Registro'. A despesa ficará 'Em Análise' pelo escritório. Entendido?", chips: ["Entendi", "Quando desconta do saldo?"] },
-        4: { reply: "Quando o escritório aprovar, o valor será SUBTRAÍDO automaticamente do seu 'Físico (Confirmado)'. Ajudo com mais algo?", chips: ["Ver Menu Principal", "Encerrar"] },
-        erro: { reply: "Se errar ao lançar a despesa, peça ao escritório para recusar a operação, assim você poderá enviá-la novamente com os dados corretos." }
+        2: { reply: "Legal. Informe o valor gasto, detalhe o que foi comprado na observação e ajuste a data caso a despesa tenha ocorrido em outro dia. Tudo certo até aqui?", chips: ["Tudo certo", "Errei, o que faço?"] },
+        3: { reply: "Agora, clique em 'Enviar Registro'. Sua despesa ficará 'Em Análise' pelo escritório. Entendido?", chips: ["Entendi", "Quando desconta do saldo?"] },
+        4: { reply: "Atenção: Quando o escritório aprovar, o valor será SUBTRAÍDO do seu saldo 'Físico (Confirmado)'. Mais alguma dúvida?", chips: ["Voltar ao início", "Encerrar"] },
+        erro: { reply: "Se errar os dados ao lançar uma despesa, peça para o responsável no escritório recusar a operação. Assim, ela será cancelada e você poderá enviar uma nova com os dados corretos." }
       },
       boleto: {
-        2: { reply: "O segundo passo é o **Registro de Pagamento**. Quando você tirar o dinheiro da gaveta para pagar o boleto, clique em 'Informar Pagamento Efetuado' e digite o valor exato. Conseguiu fazer isso?", chips: ["Sim, informei", "E agora?"] },
-        3: { reply: "Pronto! O boleto passa para 'Análise de Pagamento'. O terceiro e último passo é com o escritório: eles vão avaliar e **Confirmar a Baixa** no sistema. Entendido?", chips: ["Entendido", "Já descontou do saldo?"] },
-        4: { reply: "Lembre-se: Somente APÓS o escritório confirmar a baixa é que o status muda para 'Pago' e o valor é DESCONTADO automaticamente do seu caixa. Mais alguma dúvida?", chips: ["Ver Menu Principal", "Encerrar"] },
-        erro: { reply: "Se notar algum erro no boleto (valor divergente, por exemplo), use o botão de relatar erro na tela de conferência para devolvê-lo ao escritório." }
+        2: { reply: "A Etapa 2 é o **Registro de Pagamento**. Quando você retirar o dinheiro do caixa para efetuar o pagamento do boleto, clique no botão 'Informar Pagamento Efetuado' e digite o valor exato pago. Conseguiu fazer isso?", chips: ["Sim, informei", "E agora?"] },
+        3: { reply: "Pronto! O boleto agora passa para o status de 'Análise de Pagamento'. A Etapa 3 e última é com o escritório: eles vão avaliar a operação e **Confirmar a Baixa** no sistema corporativo. Entendido?", chips: ["Entendido", "Já descontou do saldo?"] },
+        4: { reply: "Reforçando a regra vital: Somente APÓS o escritório confirmar a baixa na Etapa 3 é que o boleto fica 'Pago' e o valor é DESCONTADO automaticamente do seu caixa. Posso ajudar com mais algo?", chips: ["Voltar ao início", "Encerrar"] },
+        erro: { reply: "Se você notar alguma inconsistência no boleto (como valor diferente ou se o boleto não for da sua loja), utilize o botão de relatar erro diretamente na tela de conferência. Isso devolverá o documento ao escritório para correção." }
       }
     };
 
@@ -191,29 +180,37 @@ export default async function handler(req, res) {
         } else {
             session.intent = null;
             session.step = 0;
-            return responder(res, sessionId, session, "Fluxo concluído! O que mais você deseja saber sobre o sistema da farmácia?", ["Sangria", "Despesas", "Boletos", "Saldo do Caixa"]);
+            return responder(res, sessionId, session, "Fluxo concluído! O que mais você precisa verificar no sistema da farmácia?", ["Sangria", "Despesas", "Boletos", "Saldo do Caixa"]);
         }
       }
     }
 
     if (!session.intent && isContinuation) {
-      return responder(res, sessionId, session, "Estou pronto para ajudar! Escolha uma das opções abaixo para começarmos:", ["Sangria", "Despesas", "Boletos", "Saldo do Caixa"]);
+      return responder(res, sessionId, session, "Estou pronto para ajudar! Escolha uma das operações de caixa abaixo para começarmos:", ["Lançar Sangria", "Lançar Despesa", "Pagar Boletos", "Verificar Saldo"]);
     }
 
-    // 8. FALLBACK INTELIGENTE COM LLM (Groq)
-    let contextHint = session.lastTopic ? `[O usuário estava conversando sobre '${session.lastTopic}']. ` : "";
+    // =========================================================================
+    // 8. FALLBACK INTELIGENTE (LLM BLINDADO - SYSTEM PROMPT REFORÇADO)
+    // =========================================================================
+    let contextHint = session.lastTopic ? `[Contexto Atual: O usuário está perguntando sobre '${session.lastTopic}']. ` : "";
     if (session.intent) {
-      contextHint += `[O usuário está no meio de um passo a passo sobre '${session.intent}', etapa atual: ${session.step}]. `;
+      contextHint += `[Progresso: O usuário está no fluxo de '${session.intent}', etapa ${session.step}]. `;
     }
 
-    const systemPrompt = `Você é o Assistente especialista do sistema interno Smart Farma (um sistema de gestão exclusivo para FARMÁCIAS).
-DIRETRIZES ABSOLUTAS E INQUEBRÁVEIS:
-1. IDENTIDADE E ESCOPO: Você é estritamente um assistente de uso do sistema da farmácia. NUNCA invente informações institucionais, segmento de negócio (somos FARMÁCIA), autoria, empresa desenvolvedora, infraestrutura ou datas de atualização.
-2. LIMITAÇÃO DE AÇÃO: NUNCA afirme que você executou, aprovou, analisou ou verificou ações no sistema. Você é apenas um guia textual.
-3. BOLETOS (3 ETAPAS OBRIGATÓRIAS): Conferência (aceite na loja) -> Registro do Pagamento (informar valor) -> Confirmação do Escritório (baixa). Aceitar boleto NÃO paga e NÃO desconta saldo.
-4. CONSEQUÊNCIAS: Sempre deixe claro que 'Sangria' SOMA no saldo após aprovação, e 'Despesa/Boleto' SUBTRAI do saldo após aprovação. Operações 'Em Análise' não afetam o saldo.
-5. POSTURA ANTI-ALUCINAÇÃO: Se a pergunta fugir das regras do sistema (Sangria, Despesa, Boletos, Saldo), NÃO improvise. Responda APENAS que você só pode ajudar com o uso do sistema Smart Farma.
-Responda em parágrafos curtos.
+    const systemPrompt = `Você é um assistente virtual ESTRITAMENTE focado e restrito ao SISTEMA INTERNO de caixa da farmácia "Smart Farma".
+
+IDENTIDADE E REGRAS ABSOLUTAS (NUNCA VIOLE):
+1. NATUREZA: "Smart Farma" é o nome da farmácia. Este sistema é APENAS uma ferramenta interna das lojas. NÃO é um produto comercial para outras farmácias.
+2. ESCOPO PERMITIDO: Você SÓ pode falar sobre:
+   - Sangrias: Retirada de dinheiro para o escritório. Soma no Saldo Físico após aprovada.
+   - Despesas: Gastos da loja. Subtrai do Saldo Físico após aprovada.
+   - Boletos: Tem 3 etapas (1. Conferência, 2. Registro de Pagamento, 3. Confirmação do Escritório). O saldo só desconta na etapa 3.
+   - Saldo Físico Confirmado.
+3. ESCOPO PROIBIDO: NUNCA responda sobre gestão de estoque, vendas, notas fiscais, ERP geral ou contabilidade. Se perguntarem, diga que o sistema foca apenas no controle do caixa.
+4. ANTI-ALUCINAÇÃO: NUNCA invente informações sobre quem desenvolveu o sistema, histórico da empresa, ou data de atualização.
+5. EXECUÇÃO: Você NÃO faz alterações no sistema, banco de dados ou executa tarefas. Você apenas ensina o usuário a usar as telas.
+
+Como responder: Seja muito direto, técnico e foque exclusivamente no uso do sistema. Responda em português do Brasil.
 ${contextHint}`;
 
     const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
@@ -228,29 +225,29 @@ ${contextHint}`;
           { role: "system", content: systemPrompt },
           { role: "user", content: userMessage }
         ],
-        temperature: 0.05, // Temperatura quase zerada para garantir que o modelo seja determinístico e factual
+        temperature: 0.0, // Zero criatividade, estritamente factual.
         max_tokens: 250
       })
     });
 
     if (!response.ok) {
-        return res.status(502).json({ reply: "Estou com instabilidade temporária na minha conexão. Por favor, tente perguntar novamente em instantes." });
+        return res.status(502).json({ reply: "Estou enfrentando uma instabilidade temporária na minha conexão. Por favor, aguarde um momento e envie sua mensagem novamente." });
     }
 
     const data = await response.json();
     let reply = data?.choices?.[0]?.message?.content?.trim();
 
-    // Menu de Fallback Estruturado se a IA falhar ou der respostas muito genéricas
-    if (!reply || reply.length < 5) {
-        reply = "Posso ajudar apenas com dúvidas sobre o uso do sistema Smart Farma.\n\nSobre qual destes tópicos você quer falar?";
-        return responder(res, sessionId, session, reply, ["Sangria", "Despesas", "Boletos", "Saldo"]);
+    // Validação estrita do LLM. Se a resposta for vazia, muito curta ou pedir desculpas genéricas.
+    if (!reply || reply.length < 15 || reply.toLowerCase().includes("não tenho informações")) {
+        reply = "Não localizei a resposta exata para isso no meu banco de dados do sistema do caixa. Posso te ajudar com passo a passo nas seguintes rotinas:\n\n• Lançar Sangrias\n• Lançar Despesas\n• Fluxo de Boletos\n• Controle do Saldo da Loja\n\nQual destas opções você prefere?";
+        return responder(res, sessionId, session, reply, ["Sangrias", "Despesas", "Boletos", "Saldo"]);
     }
 
     return responder(res, sessionId, session, reply);
 
   } catch (e) {
     console.error("Erro na API Chat:", e);
-    return res.status(500).json({ reply: "Ocorreu uma falha interna nos meus sistemas. Tente novamente em instantes.", chips: ["Recarregar"] });
+    return res.status(500).json({ reply: "Ocorreu uma falha de conexão interna no servidor. Tente recarregar a página da loja e tentar novamente.", chips: ["Tentar de novo"] });
   }
 }
 
