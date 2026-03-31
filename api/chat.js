@@ -26,7 +26,7 @@ export default async function handler(req, res) {
     cleanExpiredSessions();
 
     let { message, sessionId } = req.body || {};
-    
+
     if (!message || typeof message !== "string" || !message.trim()) {
       return res.status(400).json({ error: "Mensagem vazia ou inválida." });
     }
@@ -55,11 +55,11 @@ export default async function handler(req, res) {
     }
 
     // 4. INTERCEPTADORES DE ALTA PRIORIDADE (GUARDRAILS)
-    
+
     // A. Interceptador Meta/Identidade (Evita alucinação de data de atualização e LLM)
     const metaRegex = /\b(atualiza[çc][ãa]o|treinamento|quem te criou|vers[ãa]o|chatgpt|gpt|gemini|llm|ia|inteligencia artificial|modelo)\b/i;
     if (metaRegex.test(msgLimpa) && !msgLimpa.includes("sistema") && !msgLimpa.includes("tela")) {
-        return responder(res, sessionId, session, "Não possuo uma data pública de atualização ou detalhes técnicos. Fui configurado de forma estrita apenas para ajudar com as regras e o uso interno do sistema Smart Farma.", ["Voltar ao Menu"]);
+      return responder(res, sessionId, session, "Não possuo uma data pública de atualização ou detalhes técnicos. Fui configurado de forma estrita apenas para ajudar com as regras e o uso interno do sistema Smart Farma.", ["Voltar ao Menu"]);
     }
 
     // B. Interceptador de Fora de Escopo
@@ -68,16 +68,19 @@ export default async function handler(req, res) {
       return responder(res, sessionId, session, "Desculpe, só tenho permissão para orientar sobre o uso do sistema Smart Farma (caixa, operações, saldo e boletos).", ["Ver opções do sistema"]);
     }
 
-    // C. Interceptador de Contexto Local ("Onde fica?")
-    const locationRegex = /\b(onde fica|onde [ée]|como [eu ]*acho|onde acho|aonde vou|onde clico|qual tela)\b/i;
-    if (locationRegex.test(msgLimpa)) {
-        if (session.lastTopic === 'sangria' || session.lastTopic === 'despesa' || msgLimpa.includes("operacao") || msgLimpa.includes("sangria") || msgLimpa.includes("despesa")) {
-            return responder(res, sessionId, session, "A opção 'Registrar Operação' fica localizada no menu principal da área da loja. Lá você escolhe o tipo (Sangria ou Despesa).", ["Entendi"]);
-        } else if (session.lastTopic === 'boleto' || msgLimpa.includes("boleto")) {
-            return responder(res, sessionId, session, "A 'Central de Boletos' fica no menu principal do sistema. Lá você tem abas separadas para Novos Boletos e Boletos em Análise.", ["Entendi"]);
-        } else {
-            return responder(res, sessionId, session, "Depende do que você quer fazer. A 'Central de Boletos' e o 'Registrar Operação' ficam no menu principal da loja. O que você está tentando lançar?", ["Fazer Sangria", "Pagar Boleto"]);
-        }
+    // C. Interceptador de Dificuldade / Ajuda Guiada
+    const dificuldadeRegex = /\b(n[aã]o achei|nao achei|n[aã]o encontrei|nao encontrei|cad[eê]|onde fica|onde [ée]|como [eu ]*acho|onde acho|aonde vou|onde clico|qual tela|n[aã]o sei|nao sei)\b/i;
+    if (dificuldadeRegex.test(msgLimpa)) {
+      const isSangria = (session.intent === 'sangria' || session.lastTopic === 'sangria' || msgLimpa.includes("sangria"));
+
+      // Muda para a intent de ajuda guiada dinâmica via LLM
+      session.intent = "ajuda_guiada";
+
+      if (isSangria) {
+        return responder(res, sessionId, session, "Sem problema. Me diz uma coisa:\nVocê está na área do vendedor ou do escritório?\n\nNa sua tela aparece algum desses?\n- 'Registrar Operação'\n- 'Sangria'\n- ou algo parecido?");
+      } else {
+        return responder(res, sessionId, session, "Sem problema. Me diz uma coisa:\nVocê está como vendedor ou escritório?\n\nQuais botões você está vendo aí?");
+      }
     }
 
     // 5. DETECÇÃO DE CONTEXTO E CONTINUIDADE
@@ -88,7 +91,7 @@ export default async function handler(req, res) {
     const faqs = [
       { // Entrando no fluxo Sangria
         match: /\b(como fazer|passo a passo|lancar|enviar|registrar|como faco|cadastrar)\b.*\bsangria\b/,
-        action: () => { session.intent = "sangria"; session.step = 1; session.lastTopic = "sangria"; return { reply: "Para registrar uma sangria:\n\n1. Acesse o menu 'Registrar Operação'.\n2. Escolha o tipo 'Sangria'.\n\nVocê conseguiu encontrar essa tela?", chips: ["Sim, encontrei", "Onde fica?"] }; }
+        action: () => { session.intent = "sangria"; session.step = 1; session.lastTopic = "sangria"; return { reply: "Para fazer uma sangria:\n- Clique em 'Registrar Operação'\n- Escolha 'Sangria'\n\nVocê encontrou esse botão?", chips: ["Sim", "Não encontrei"] }; }
       },
       { // Entrando no fluxo Despesa
         match: /\b(como fazer|passo a passo|lancar|enviar|registrar|como faco|cadastrar)\b.*\bdespesa\b/,
@@ -142,13 +145,13 @@ export default async function handler(req, res) {
     // 7. PROGRESSÃO DE FLUXO ATIVO (State Machine)
     const flows = {
       sangria: {
-        2: { reply: "Ótimo! Na tela de Sangria, informe o valor exato que está enviando, escreva a observação (motivo) e, se precisar, ajuste a 'Data da operação'. Já preencheu tudo?", chips: ["Já preenchi", "Errei o valor, e agora?"] },
-        3: { reply: "Perfeito. Basta clicar em 'Enviar Registro'. A sangria ficará 'Em Análise', aguardando o escritório aprovar.\n\nFicou claro?", chips: ["Sim, entendi", "O que significa Em Análise?"] },
+        2: { reply: "Na tela de Sangria, informe o valor exato que está enviando, escreva a observação (motivo) e, se precisar, ajuste a 'Data da operação'. Já preencheu tudo?", chips: ["Já preenchi", "Errei o valor, e agora?"] },
+        3: { reply: "Basta clicar em 'Enviar Registro'. A sangria ficará 'Em Análise', aguardando o escritório aprovar.\n\nFicou claro?", chips: ["Sim, entendi", "O que significa Em Análise?"] },
         4: { reply: "Assim que o escritório aprovar, a sangria SOMA automaticamente no seu 'Físico (Confirmado)'.\n\nPosso ajudar com mais alguma coisa?", chips: ["Ver Menu Principal", "Encerrar"] },
         erro: { reply: "Se você errar o valor na sangria, avise o escritório. Eles podem modificar o valor na hora de aprovar ou recusar a operação para você lançar de novo." }
       },
       despesa: {
-        2: { reply: "Legal. Informe o valor gasto, escreva o detalhe da despesa na observação e ajuste a data se ocorreu em outro dia. Tudo certo até aqui?", chips: ["Tudo certo", "Errei, o que faço?"] },
+        2: { reply: "Informe o valor gasto, escreva o detalhe da despesa na observação e ajuste a data se ocorreu em outro dia. Tudo certo até aqui?", chips: ["Tudo certo", "Errei, o que faço?"] },
         3: { reply: "Agora é só clicar em 'Enviar Registro'. A despesa ficará 'Em Análise' pelo escritório. Entendido?", chips: ["Entendi", "Quando desconta do saldo?"] },
         4: { reply: "Quando o escritório aprovar, o valor será SUBTRAÍDO automaticamente do seu 'Físico (Confirmado)'. Ajudo com mais algo?", chips: ["Ver Menu Principal", "Encerrar"] },
         erro: { reply: "Se errar ao lançar a despesa, peça ao escritório para recusar a operação, assim você poderá enviá-la novamente com os dados corretos." }
@@ -169,11 +172,11 @@ export default async function handler(req, res) {
         session.step += 1;
         const currentFlow = flows[session.intent][session.step];
         if (currentFlow) {
-            return responder(res, sessionId, session, currentFlow.reply, currentFlow.chips);
+          return responder(res, sessionId, session, currentFlow.reply, currentFlow.chips);
         } else {
-            session.intent = null;
-            session.step = 0;
-            return responder(res, sessionId, session, "Fluxo concluído! O que mais você deseja saber sobre o sistema?", ["Sangria", "Despesas", "Boletos", "Saldo do Caixa"]);
+          session.intent = null;
+          session.step = 0;
+          return responder(res, sessionId, session, "Fluxo concluído! O que mais você deseja saber sobre o sistema?", ["Sangria", "Despesas", "Boletos", "Saldo do Caixa"]);
         }
       }
     }
@@ -185,7 +188,9 @@ export default async function handler(req, res) {
 
     // 8. FALLBACK INTELIGENTE COM LLM (Groq)
     let contextHint = session.lastTopic ? `[O usuário estava conversando sobre '${session.lastTopic}']. ` : "";
-    if (session.intent) {
+    if (session.intent === "ajuda_guiada") {
+      contextHint += `[AJUDA GUIADA ATIVADA: O usuário estava perdido. Você acabou de perguntar se ele é vendedor ou escritório e quais botões vê. A mensagem atual dele é a resposta. PROIBIDO dizer 'Ótimo', 'Perfeito', etc., ou assumir que ele achou os botões se ele ainda estiver perdido. APENAS avance ou instrua APÓS ele confirmar onde está. Lembre-se: telas de vendedor e escritório são diferentes.] `;
+    } else if (session.intent) {
       contextHint += `[O usuário está no meio de um passo a passo sobre '${session.intent}', etapa atual: ${session.step}]. `;
     }
 
@@ -210,13 +215,13 @@ ${contextHint}`;
           { role: "system", content: systemPrompt },
           { role: "user", content: userMessage }
         ],
-        temperature: 0.1, 
+        temperature: 0.1,
         max_tokens: 250
       })
     });
 
     if (!response.ok) {
-        return res.status(502).json({ reply: "Estou com instabilidade temporária na minha conexão. Por favor, tente perguntar novamente em instantes." });
+      return res.status(502).json({ reply: "Estou com instabilidade temporária na minha conexão. Por favor, tente perguntar novamente em instantes." });
     }
 
     const data = await response.json();
@@ -224,8 +229,8 @@ ${contextHint}`;
 
     // Menu de Fallback Estruturado se o LLM falhar
     if (!reply || reply.length < 5) {
-        reply = "Não compreendi totalmente sua pergunta.\n\nPosso te ajudar com as seguintes áreas do sistema:\n• Como lançar Sangria\n• Como lançar Despesa\n• Fluxo de Boletos\n• Saldo do caixa\n\nSobre qual destes tópicos você quer falar?";
-        return responder(res, sessionId, session, reply, ["Sangria", "Despesas", "Boletos", "Saldo"]);
+      reply = "Não compreendi totalmente sua pergunta.\n\nPosso te ajudar com as seguintes áreas do sistema:\n• Como lançar Sangria\n• Como lançar Despesa\n• Fluxo de Boletos\n• Saldo do caixa\n\nSobre qual destes tópicos você quer falar?";
+      return responder(res, sessionId, session, reply, ["Sangria", "Despesas", "Boletos", "Saldo"]);
     }
 
     return responder(res, sessionId, session, reply);
@@ -240,7 +245,7 @@ function responder(res, sessionId, session, replyText, chipsArray = null) {
   sessionCache.set(sessionId, session);
   const responseData = { reply: replyText, sessionId: sessionId };
   if (chipsArray && Array.isArray(chipsArray)) {
-      responseData.chips = chipsArray;
+    responseData.chips = chipsArray;
   }
   return res.status(200).json(responseData);
 }

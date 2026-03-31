@@ -82,13 +82,14 @@ export default async function handler(req, res) {
     // 5. INTERPRETAÇÃO DE CONTEXTO ("Onde fica?")
     // =========================================================================
 
-    if (/\b(onde fica|onde [ée]|como [eu ]*acho|onde acho|aonde vou|onde clico|qual tela)\b/i.test(msgLimpa)) {
-        if (session.lastTopic === 'sangria' || session.lastTopic === 'despesa' || msgLimpa.includes("operacao") || msgLimpa.includes("sangria") || msgLimpa.includes("despesa")) {
-            return responder(res, sessionId, session, "A opção 'Registrar Operação' fica localizada no menu principal da área da loja. Lá você escolhe o tipo (Sangria ou Retirada de Despesa).", ["Entendi"]);
-        } else if (session.lastTopic === 'boleto' || msgLimpa.includes("boleto")) {
-            return responder(res, sessionId, session, "A 'Central de Boletos' fica no menu principal do sistema. Lá você encontrará as abas 'Novos' e 'Em Análise'.", ["Entendi"]);
+    const dificuldadeRegex = /\b(n[aã]o achei|nao achei|n[aã]o encontrei|nao encontrei|cad[eê]|onde fica|onde [ée]|como [eu ]*acho|onde acho|aonde vou|onde clico|qual tela|n[aã]o sei|nao sei)\b/i;
+    if (dificuldadeRegex.test(msgLimpa)) {
+        const isSangria = (session.intent === 'sangria' || session.lastTopic === 'sangria' || msgLimpa.includes("sangria"));
+        session.intent = "ajuda_guiada";
+        if (isSangria) {
+            return responder(res, sessionId, session, "Sem problema. Me diz uma coisa:\nVocê está na área do vendedor ou do escritório?\n\nNa sua tela aparece algum desses?\n- 'Registrar Operação'\n- 'Sangria'\n- ou algo parecido?");
         } else {
-            return responder(res, sessionId, session, "Depende da rotina que você deseja realizar. As opções 'Central de Boletos' e 'Registrar Operação' ficam no menu principal do sistema da loja. O que você quer fazer?", ["Fazer Sangria", "Pagar Boleto"]);
+            return responder(res, sessionId, session, "Sem problema. Me diz uma coisa:\nVocê está como vendedor ou escritório?\n\nQuais botões você está vendo aí?");
         }
     }
 
@@ -101,7 +102,7 @@ export default async function handler(req, res) {
     const faqs = [
       { // Sangria Inicial
         match: /\b(como fazer|passo a passo|lancar|enviar|registrar|como faco|cadastrar)\b.*\bsangria\b/,
-        action: () => { session.intent = "sangria"; session.step = 1; session.lastTopic = "sangria"; return { reply: "Para registrar uma sangria:\n\n1. Acesse o menu 'Registrar Operação'.\n2. Escolha o tipo 'Sangria'.\n\nVocê conseguiu encontrar essa tela?", chips: ["Sim, encontrei", "Onde fica?"] }; }
+        action: () => { session.intent = "sangria"; session.step = 1; session.lastTopic = "sangria"; return { reply: "Para fazer uma sangria:\n- Clique em 'Registrar Operação'\n- Escolha 'Sangria'\n\nVocê encontrou esse botão?", chips: ["Sim", "Não encontrei"] }; }
       },
       { // Despesa Inicial
         match: /\b(como fazer|passo a passo|lancar|enviar|registrar|como faco|cadastrar)\b.*\bdespesa\b/,
@@ -149,13 +150,13 @@ export default async function handler(req, res) {
     // =========================================================================
     const flows = {
       sangria: {
-        2: { reply: "Ótimo! Na tela de Sangria, informe o valor exato, escreva a observação (motivo) e ajuste a 'Data da operação' se necessário. Você já preencheu os campos?", chips: ["Já preenchi", "Errei o valor, e agora?"] },
-        3: { reply: "Perfeito. Agora clique em 'Enviar Registro'. A sangria ficará com o status 'Em Análise', aguardando a aprovação do escritório.\n\nFicou claro?", chips: ["Sim, entendi", "O que significa Em Análise?"] },
+        2: { reply: "Na tela de Sangria, informe o valor exato, escreva a observação (motivo) e ajuste a 'Data da operação' se necessário. Você já preencheu os campos?", chips: ["Já preenchi", "Errei o valor, e agora?"] },
+        3: { reply: "Agora clique em 'Enviar Registro'. A sangria ficará com o status 'Em Análise', aguardando a aprovação do escritório.\n\nFicou claro?", chips: ["Sim, entendi", "O que significa Em Análise?"] },
         4: { reply: "Lembre-se: Assim que o escritório aprovar, a sangria SOMARÁ automaticamente no seu saldo 'Físico (Confirmado)'. Ajudo com mais alguma coisa?", chips: ["Voltar ao início", "Encerrar"] },
         erro: { reply: "Se você errar o valor na sangria, não se preocupe. Avise o escritório imediatamente; eles podem ajustar o valor durante a aprovação ou recusar a operação para que você possa enviá-la novamente do jeito certo." }
       },
       despesa: {
-        2: { reply: "Legal. Informe o valor gasto, detalhe o que foi comprado na observação e ajuste a data caso a despesa tenha ocorrido em outro dia. Tudo certo até aqui?", chips: ["Tudo certo", "Errei, o que faço?"] },
+        2: { reply: "Informe o valor gasto, detalhe o que foi comprado na observação e ajuste a data caso a despesa tenha ocorrido em outro dia. Tudo certo até aqui?", chips: ["Tudo certo", "Errei, o que faço?"] },
         3: { reply: "Agora, clique em 'Enviar Registro'. Sua despesa ficará 'Em Análise' pelo escritório. Entendido?", chips: ["Entendi", "Quando desconta do saldo?"] },
         4: { reply: "Atenção: Quando o escritório aprovar, o valor será SUBTRAÍDO do seu saldo 'Físico (Confirmado)'. Mais alguma dúvida?", chips: ["Voltar ao início", "Encerrar"] },
         erro: { reply: "Se errar os dados ao lançar uma despesa, peça para o responsável no escritório recusar a operação. Assim, ela será cancelada e você poderá enviar uma nova com os dados corretos." }
@@ -193,7 +194,9 @@ export default async function handler(req, res) {
     // 8. FALLBACK INTELIGENTE (LLM BLINDADO - SYSTEM PROMPT REFORÇADO)
     // =========================================================================
     let contextHint = session.lastTopic ? `[Contexto Atual: O usuário está perguntando sobre '${session.lastTopic}']. ` : "";
-    if (session.intent) {
+    if (session.intent === "ajuda_guiada") {
+      contextHint += `[AJUDA GUIADA ATIVADA: O usuário estava perdido. Você acabou de perguntar se ele é vendedor ou escritório e quais botões vê. A mensagem dele agora é a resposta. PROIBIDO dizer 'Ótimo', 'Perfeito', etc., ou assumir que ele encontrou os botões se ele ainda estiver perdido. APENAS avance ou instrua APÓS ele confirmar onde está. Respeite as diferenças entre perfil vendedor e escritório.] `;
+    } else if (session.intent) {
       contextHint += `[Progresso: O usuário está no fluxo de '${session.intent}', etapa ${session.step}]. `;
     }
 
